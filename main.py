@@ -4,15 +4,20 @@ import smtplib
 import ssl
 import os
 import time
-
+import sqlite3 as sq
 from datetime import datetime
 
-URL = 'https://programmer100.pythonanywhere.com/'
+URL = 'https://programmer100.pythonanywhere.com/tours/'
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36'
+                  ' (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+
+connection = sq.connect("data.db")
 
 
 def scrape(url):
     """Scrape the pagr source from the URL"""
-    response = requests.get(url)
+    response = requests.get(url, headers=HEADERS)
     source = response.text
     return source
 
@@ -22,32 +27,38 @@ def extract(source):
     value = extractor.extract(source)["tours"]
     return value
 
-# If you want to send email remove the "#" sign below
-# def send_email(message):
-    #  host = "smtp.gmail.com"
-    # port = 465
-    # username = "rishil13123@gmail.com"
-    # password = "lkiwaktwxjxutjom"
-    # receiver = "rishils162@gmail.com"
-    # context = ssl.create_default_context()
 
-    # with smtplib.SMTP_SSL(host, port, context=context) as server:
-    # server.login(username, password)
-    # server.sendmail(username, receiver, message)
-    # print("Email was sent!")
+def send_email(message):
+    host = "smtp.gmail.com"
+    port = 465
+    username = "rishil13123@gmail.com"
+    password = "lkiwaktwxjxutjom"
+    receiver = "rishils162@gmail.com"
+    context = ssl.create_default_context()
+
+    with smtplib.SMTP_SSL(host, port, context=context) as server:
+        server.login(username, password)
+        server.sendmail(username, receiver, message)
+    print("Email was sent!")
 
 
 def store(extracted):
-    now = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-    with open("data.txt", 'a') as file:
-        line = f"{now}, {extracted}"
-        file.write(line + "\n")
-
+    row = extracted.split(",")
+    row = [item.strip() for item in row]
+    cursor = connection.cursor()
+    cursor.execute("INSERT INTO Events VALUES(?,?,?)", row)
+    connection.commit()
 
 # can be used along with send email so that the file name is not repeated in data.txt while searching for tours
-# def read(extracted):
-    # with open("data.txt", 'r') as file:
-    #   return file.read()
+def read(extracted):
+    row = extracted.split(",")
+    row = [item.strip() for item in row]
+    band, city, date = row
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM Events WHERE band=? AND city=? AND date=?", (band, city, date))
+    rows = cursor.fetchall()
+    print(rows)
+    return rows
 
 
 if __name__ == "__main__":
@@ -55,10 +66,9 @@ if __name__ == "__main__":
         scraped = scrape(URL)
         extracted = extract(scraped)
         print(extracted)
-        store(extracted)
-        # content = read(extracted)
-        # if extracted != "No upcoming tours":
-        #   if extracted not in content:
-        #       store(extracted)
-        #       send_email(message="Hey, New event was found!")
+        if extracted != "No upcoming tours":
+            row = read(extracted)
+            if not row:
+                store(extracted)
+            send_email(message="Hey, New event was found!")
         time.sleep(2)
